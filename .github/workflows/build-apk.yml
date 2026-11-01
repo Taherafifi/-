@@ -19,7 +19,7 @@ jobs:
         run: |
           mkdir -p www scripts
           cat > package.json <<'EOF'
-          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
+          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/camera":"^6.1.0","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
           EOF
           cat > capacitor.config.json <<'EOF'
           {
@@ -95,7 +95,41 @@ jobs:
                   </activity>''', 1)
           if 'POST_NOTIFICATIONS' not in mf:
               mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>')
+          if 'android.permission.CAMERA' not in mf:
+              mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>')
           open(mp, 'w', encoding='utf-8').write(mf)
+
+          # ---- notification small icon (white glyph on transparent) + default color ----
+          def glyph(sz):
+              S = sz * 8
+              im = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+              g = ImageDraw.Draw(im)
+              W = (255, 255, 255, 255)
+              c = S / 2
+              R = S * 0.27
+              g.ellipse((c - R, c - R, c + R, c + R), outline=W, width=int(S * 0.06))
+              r2 = R * 0.45
+              g.ellipse((c - r2, c - r2, c + r2, c + r2), fill=W)
+              fx = S * 0.14
+              tw = S * 0.045
+              g.rounded_rectangle((fx - tw, S * 0.50, fx + tw, S * 0.88), radius=tw, fill=W)
+              for k in (-1, 0, 1):
+                  g.rounded_rectangle((fx + k * S * 0.05 - tw / 2, S * 0.14, fx + k * S * 0.05 + tw / 2, S * 0.48), radius=tw / 2, fill=W)
+              g.rectangle((fx - S * 0.075, S * 0.42, fx + S * 0.075, S * 0.52), fill=W)
+              kx = S * 0.86
+              g.rounded_rectangle((kx - tw, S * 0.52, kx + tw, S * 0.88), radius=tw, fill=W)
+              g.polygon([(kx + tw, S * 0.14), (kx + tw, S * 0.52), (kx - S * 0.05, S * 0.52), (kx - S * 0.05, S * 0.30)], fill=W)
+              return im.resize((sz, sz), Image.LANCZOS)
+
+          for d, s in {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}.items():
+              os.makedirs(A + '/res/drawable-' + d, exist_ok=True)
+              glyph(s).save(A + '/res/drawable-' + d + '/ic_stat_sofra.png')
+          open(A + '/res/values/notif_color.xml', 'w').write(
+              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="notif_color">#37B6E9</color>\n</resources>\n')
+          mf = open(mp, encoding='utf-8').read()
+          if 'default_notification_icon' not in mf:
+              mf = mf.replace('</application>', '        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_sofra" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notif_color" />\n    </application>')
+              open(mp, 'w', encoding='utf-8').write(mf)
 
           vc = os.environ.get('VERSION_CODE', '1')
           gp = 'android/app/build.gradle'
