@@ -1,0 +1,149 @@
+name: Build Sofra APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Create project files
+        run: |
+          mkdir -p www scripts
+          cat > package.json <<'EOF'
+          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
+          EOF
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.taher.sofra",
+            "appName": "\u0633\u064f\u0641\u0631\u0629",
+            "webDir": "www",
+            "backgroundColor": "#242C3B",
+            "server": { "url": "https://taherafifi.github.io/-/", "androidScheme": "https", "cleartext": false },
+            "plugins": { "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] } }
+          }
+          EOF
+          cat > www/index.html <<'EOF'
+          <!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#242C3B;color:#e8edf7;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Loading... check your internet connection on first launch.</p></body></html>
+          EOF
+          cat > scripts/prepare.py <<'EOF'
+          import os, re, io, glob, urllib.request
+          from PIL import Image, ImageDraw
+          A = 'android/app/src/main'
+          BG = (23, 28, 46)
+          URL = os.environ.get('ICON_URL', 'https://taherafifi.github.io/-/icon-512.png')
+          src = Image.open(io.BytesIO(urllib.request.urlopen(URL).read())).convert('RGB')
+          W = src.size[0]
+          t0 = int(W * 0.84)
+          m = (W - t0) // 2
+          tile = src.crop((m, m, m + t0, m + t0))
+          T = tile.size[0]
+          mk = Image.new('L', (T * 4, T * 4), 0)
+          ImageDraw.Draw(mk).rounded_rectangle((0, 0, T * 4 - 1, T * 4 - 1), radius=int(T * 0.205) * 4, fill=255)
+          tile = tile.convert('RGBA')
+          tile.putalpha(mk.resize((T, T), Image.LANCZOS))
+
+          def canvas(size, scale, bg=None):
+              c = Image.new('RGBA', (size, size), (0, 0, 0, 0) if bg is None else bg + (255,))
+              t = tile.resize((int(size * scale),) * 2, Image.LANCZOS)
+              o = (size - t.size[0]) // 2
+              c.alpha_composite(t, (o, o))
+              return c
+
+          dens = {'mdpi': (48, 108), 'hdpi': (72, 162), 'xhdpi': (96, 216), 'xxhdpi': (144, 324), 'xxxhdpi': (192, 432)}
+          for d, (l, f) in dens.items():
+              p = A + '/res/mipmap-' + d
+              os.makedirs(p, exist_ok=True)
+              canvas(f, 0.74).save(p + '/ic_launcher_foreground.png')
+              canvas(l, 1.0).save(p + '/ic_launcher.png')
+              r = canvas(l, 0.8, BG)
+              cm = Image.new('L', (l * 4, l * 4), 0)
+              ImageDraw.Draw(cm).ellipse((0, 0, l * 4 - 1, l * 4 - 1), fill=255)
+              r.putalpha(cm.resize((l, l), Image.LANCZOS))
+              r.save(p + '/ic_launcher_round.png')
+
+          ad = A + '/res/mipmap-anydpi-v26'
+          os.makedirs(ad, exist_ok=True)
+          xml = ('<?xml version="1.0" encoding="utf-8"?>\n'
+                 '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                 '    <background android:drawable="@color/ic_launcher_background"/>\n'
+                 '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n'
+                 '</adaptive-icon>\n')
+          for n in ('ic_launcher.xml', 'ic_launcher_round.xml'):
+              open(ad + '/' + n, 'w').write(xml)
+          os.makedirs(A + '/res/values', exist_ok=True)
+          open(A + '/res/values/ic_launcher_background.xml', 'w').write(
+              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#171C2E</color>\n</resources>\n')
+
+          mp = A + '/AndroidManifest.xml'
+          mf = open(mp, encoding='utf-8').read()
+          if 'android:scheme="taher.sofra"' not in mf:
+              mf = mf.replace('</activity>', '''    <intent-filter>
+                          <action android:name="android.intent.action.VIEW" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.BROWSABLE" />
+                          <data android:scheme="taher.sofra" android:host="login" />
+                      </intent-filter>
+                  </activity>''', 1)
+          if 'POST_NOTIFICATIONS' not in mf:
+              mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>')
+          open(mp, 'w', encoding='utf-8').write(mf)
+
+          vc = os.environ.get('VERSION_CODE', '1')
+          gp = 'android/app/build.gradle'
+          g = open(gp).read()
+          g = re.sub(r'versionCode \d+', 'versionCode ' + vc, g)
+          g = re.sub(r'versionName "[^"]*"', 'versionName "1.' + vc + '"', g)
+          open(gp, 'w').write(g)
+
+          gs = os.environ.get('GOOGLE_SERVICES_JSON', '').strip()
+          if gs:
+              open('android/app/google-services.json', 'w').write(gs)
+              print('firebase: google-services.json added')
+          else:
+              print('firebase: no google-services.json (push disabled)')
+          EOF
+      - name: Install
+        run: npm install
+      - name: Add Android project
+        run: npx cap add android
+      - name: Prepare icons, manifest, version, firebase
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          pip install pillow
+          python3 scripts/prepare.py
+      - name: Sync
+        run: npx cap sync android
+      - name: Build release
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Sign
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then echo "Missing KEYSTORE_B64 or KEYSTORE_PASSWORD secret"; exit 1; fi
+          echo "$KS_B64" | base64 -d > sofra.p12
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          UNSIGNED=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          $BT/zipalign -p -f 4 "$UNSIGNED" aligned.apk
+          $BT/apksigner sign --ks sofra.p12 --ks-type PKCS12 --ks-key-alias sofra --ks-pass env:KS_PASS --key-pass env:KS_PASS --out Sofra.apk aligned.apk
+          $BT/apksigner verify Sofra.apk
+          rm -f sofra.p12
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Sofra build ${{ github.run_number }}
+          files: Sofra.apk
