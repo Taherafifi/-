@@ -19,7 +19,7 @@ jobs:
         run: |
           mkdir -p www scripts
           cat > package.json <<'EOF'
-          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/camera":"^6.1.0","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
+          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/camera":"^6.1.0","@aparajita/capacitor-biometric-auth":"^8.0.2","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
           EOF
           cat > capacitor.config.json <<'EOF'
           {
@@ -130,6 +130,16 @@ jobs:
           if 'default_notification_icon' not in mf:
               mf = mf.replace('</application>', '        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_sofra" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notif_color" />\n    </application>')
               open(mp, 'w', encoding='utf-8').write(mf)
+
+          mf = open(mp, encoding='utf-8').read()
+          if 'USE_BIOMETRIC' not in mf:
+              mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n</manifest>')
+              open(mp, 'w', encoding='utf-8').write(mf)
+          vp = 'android/variables.gradle'
+          if os.path.exists(vp):
+              vv = open(vp).read()
+              vv = re.sub(r'minSdkVersion\s*=\s*\d+', 'minSdkVersion = 23', vv)
+              open(vp, 'w').write(vv)
 
           vc = os.environ.get('VERSION_CODE', '1')
           gp = 'android/app/build.gradle'
