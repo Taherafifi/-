@@ -19,7 +19,7 @@ jobs:
         run: |
           mkdir -p www scripts
           cat > package.json <<'EOF'
-          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/camera":"^6.1.0","@aparajita/capacitor-biometric-auth":"^8.0.2","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
+          {"name":"sofra","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/app":"^6.0.2","@capacitor/camera":"^6.1.0","@aparajita/capacitor-biometric-auth":"^8.0.2","@capacitor-community/speech-recognition":"^6.0.0","@capacitor/cli":"^6.2.0","@capacitor/core":"^6.2.0","@capacitor/push-notifications":"^6.0.3"}}
           EOF
           cat > capacitor.config.json <<'EOF'
           {
@@ -135,6 +135,12 @@ jobs:
           if 'USE_BIOMETRIC' not in mf:
               mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n</manifest>')
               open(mp, 'w', encoding='utf-8').write(mf)
+          mf = open(mp, encoding='utf-8').read()
+          if 'RECORD_AUDIO' not in mf:
+              mf = mf.replace('</manifest>', '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n</manifest>')
+          if 'android.speech.RecognitionService' not in mf:
+              mf = mf.replace('</manifest>', '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n</manifest>')
+          open(mp, 'w', encoding='utf-8').write(mf)
           vp = 'android/variables.gradle'
           if os.path.exists(vp):
               vv = open(vp).read()
