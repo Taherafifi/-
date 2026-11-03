@@ -162,7 +162,7 @@ jobs:
               print('firebase: no google-services.json (push disabled)')
           EOF
       - name: Install
-        run: npm install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Add Android project
         run: npx cap add android
       - name: Prepare icons, manifest, version, firebase
